@@ -59,7 +59,9 @@ object Type {
     
   }
   
-  case class Variable(name: String) extends Type.Tau {
+  sealed trait Variable extends Type.Tau {
+    
+    def name: String
   
     override def substitute(variable: Variable, tau: Type.Tau): Type =
       if (this == variable) tau
@@ -69,12 +71,29 @@ object Type {
       this
   
     lazy val binders: Set[Type.Variable] = Set()
-    
+  
     lazy val freeVariables: Set[Type.Variable] = Set(this)
   
     lazy val metaVariables: Set[Type.MetaVariable] = Set()
-    
+  
     lazy val doc: Doc = Doc.text(name)
+    
+  }
+  
+  object Variable {
+    
+    case class Skolemised(name: String) extends Variable {
+  
+      override def equals(any: Any): Boolean = any match {
+        case skolemised: Skolemised => this eq skolemised
+        case _ => false
+      }
+  
+      override def hashCode(): Int = System.identityHashCode(this)
+      
+    }
+    
+    case class Bound(name: String) extends Variable
     
   }
   

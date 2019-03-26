@@ -215,7 +215,7 @@ object TypeAnalysis {
       case Tree.Annotation(body, tau) =>
         for {
           sigma0 <- TypeCheck.generalize(tau)
-          tau0 <- TypeCheck.instantiate(sigma0)
+          tau0 <- TypeCheck.skolemise(sigma0)
           tau1 <- inferTau(body)
           _ <- TypeCheck.unify(tau0, tau1)
           _ <- fulfillTau(tau0, expectation)
@@ -277,7 +277,7 @@ object TypeAnalysis {
       case Tree.Annotation(body, tau) =>
         for {
           sigma0 <- TypeCheck.generalize(tau)
-          tau0 <- TypeCheck.instantiate(sigma0)
+          tau0 <- TypeCheck.skolemise(sigma0)
           _ <- fulfillSigma(tau0, expectation)
           result <- bindSigma(body, Expectation.Check(sigma0))(typeCheck)
         } yield result
@@ -334,7 +334,7 @@ object TypeAnalysis {
     case Tree.Annotation(body, tau) =>
       for {
         sigma0 <- TypeCheck.generalize(tau)
-        tau0 <- TypeCheck.instantiate(sigma0)
+        tau0 <- TypeCheck.skolemise(sigma0)
         _ <- fulfillTau(tau0, expectation)
         result <- bindTau(body, Expectation.Check(tau0))(typeCheck)
       } yield result

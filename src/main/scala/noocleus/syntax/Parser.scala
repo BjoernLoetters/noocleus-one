@@ -101,7 +101,7 @@ object Parser extends RegexParsers with ImplicitConversions {
   private lazy val typeVariable: Parser[Type.Variable] =
     name ^? ({
       case identifier if !identifier.headOption.exists(_.isUpper) =>
-        Type.Variable(identifier)
+        Type.Variable.Bound(identifier)
     }, identifier => s"'$identifier' is not a valid type variable")
   
   private lazy val typeConstant: Parser[Type.Constant] =

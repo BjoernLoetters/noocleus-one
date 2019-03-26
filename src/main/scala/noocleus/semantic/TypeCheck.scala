@@ -84,7 +84,7 @@ object TypeCheck {
    */
   lazy val allBinders: Stream[Type.Variable] = {
     def go(id: Int): Stream[Type.Variable] =
-      ('a' to 'z').toStream.map(_.toString + id).map(Type.Variable) #::: go(id + 1)
+      ('a' to 'z').toStream.map(_.toString + id).map(Type.Variable.Bound) #::: go(id + 1)
     go(0)
   }
   
@@ -141,17 +141,23 @@ object TypeCheck {
       environment <- TypeCheck.environment
       zonked <- environment.metaVariables.toList
         .flatTraverse[TypeCheck, Type.MetaVariable](zonk(_).map(_.metaVariables.toList))
+      
       metaVariables = (tau0.metaVariables -- zonked).toList
+      unboundVariables = tau0.freeVariables -- environment.freeVariables
+      
       newBinders = allBinders
         .filterNot(tau0.freeVariables.contains)
         .filterNot(tau0.binders.contains)
-        .take(metaVariables.size)
-      substitution = metaVariables.zip(newBinders).toMap
-      unboundVariables = tau0.freeVariables -- environment.freeVariables
+        .take(metaVariables.size + unboundVariables.size)
+        .toList
       
-      substituted = tau0.substituteMetaVariables(substitution)
-      variables = (newBinders ++ unboundVariables).toList
-      sigma = if (variables.isEmpty) substituted else Type.ForAll(variables, substituted)
+      metaVariableSubstitution = metaVariables.zip(newBinders).toMap
+      typeVariableSubstitution = unboundVariables.zip(newBinders.drop(metaVariables.size)).toMap
+      
+      substituted = tau0
+        .substituteMetaVariables(metaVariableSubstitution)
+        .substitute(typeVariableSubstitution)
+      sigma = if (newBinders.isEmpty) substituted else Type.ForAll(newBinders, substituted)
     } yield sigma
   
   /**
@@ -167,6 +173,18 @@ object TypeCheck {
         .map(_.toMap)
         .map(tau.substitute)
     
+    case _ =>
+      TypeCheck.pure(sigma)
+  }
+  
+  def skolemise(sigma: Type.Sigma): TypeCheck[Type.Tau] = sigma match {
+    case Type.ForAll(variables, tau) =>
+      val substitution = variables
+        .map(variable => variable -> Type.Variable.Skolemised(variable.name))
+        .toMap
+      
+      TypeCheck.pure(tau.substitute(substitution))
+      
     case _ =>
       TypeCheck.pure(sigma)
   }
