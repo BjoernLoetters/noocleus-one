@@ -7,7 +7,17 @@ import cats.effect.IO
 import cats.effect.concurrent.Ref
 import cats.implicits._
 
-sealed trait TypeCheck[+A] extends (Environment => IO[Validated[String, A]])
+sealed trait TypeCheck[+A] extends (Environment => IO[Validated[String, A]]) {
+  
+  def withFilter(predicate: A => Boolean): TypeCheck[A] =
+    for {
+      value <- this
+      result <-
+        if (predicate(value)) TypeCheck.pure(value)
+        else TypeCheck.fail(s"predicate not fulfilled for value '$value'")
+    } yield result
+  
+}
 
 object TypeCheck {
   
@@ -177,6 +187,51 @@ object TypeCheck {
       TypeCheck.pure(sigma)
   }
   
+  /**
+   * Skolemises all free type variables in the tau type and runs the
+   * provided type check (remembering the skolemised variables for
+   * future use in the environment)
+   * @param tau The tau type
+   * @param typeCheck The type check
+   * @tparam A The result of the type check
+   * @return The type check
+   */
+  def skolemiseFreeVariables[A](tau: Type.Tau)(typeCheck: Type.Tau => TypeCheck[A]): TypeCheck[A] = {
+    
+    def go[A](tau: Type.Tau)(typeCheck: Type.Tau => TypeCheck[A]): TypeCheck[A] = tau match {
+      case variable: Type.Variable =>
+        for {
+          environment <- TypeCheck.environment
+          result <-
+            if ((variable.freeVariables -- environment.freeVariables).contains(variable))
+              environment.getSkolemisedVariable(variable) match {
+                case Some(skolemised) => typeCheck(skolemised)
+                case None =>
+                  val skolemised = Type.Variable.Skolemised(variable.name)
+                  TypeCheck.modify(_.addSkolemisedVariable(variable, skolemised))(typeCheck(skolemised))
+              }
+            else typeCheck(variable)
+        } yield result
+
+      case Type.Application(function, argument) =>
+        go(function)(function => go(argument)(argument => typeCheck(Type.Application(function, argument))))
+        
+      case Type.Function(domain, codomain) =>
+        go(domain)(domain => go(codomain)(codomain => typeCheck(Type.Function(domain, codomain))))
+      
+      case _ =>
+        typeCheck(tau)
+    }
+    
+    go(tau)(typeCheck)
+  }
+  
+  /**
+   * Skolemises all type variables that are quantified by the outermost forall
+   * of the provided sigma type
+   * @param sigma The sigma type
+   * @return A skolemised version of `sigma`
+   */
   def skolemise(sigma: Type.Sigma): TypeCheck[Type.Tau] = sigma match {
     case Type.ForAll(variables, tau) =>
       val substitution = variables

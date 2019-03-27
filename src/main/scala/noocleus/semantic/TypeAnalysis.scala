@@ -178,13 +178,13 @@ object TypeAnalysis {
                 case Nil => typeCheck
                 case Tree.Case(binder, body) :: cases =>
                   for {
-                    result <- bindTau(binder, Expectation.Check(tau0)) {
+                    _ <- bindTau(binder, Expectation.Check(tau0)) {
                       for {
                         tau <- inferTau(body)
                         _ <- TypeCheck.unify(tau1, tau)
-                        result <- go(cases)(typeCheck)
-                      } yield result
+                      } yield ()
                     }
+                    result <- go(cases)(typeCheck)
                   } yield result
               }
   
@@ -218,7 +218,8 @@ object TypeAnalysis {
           tau0 <- TypeCheck.skolemise(sigma0)
           tau1 <- inferTau(body)
           _ <- TypeCheck.unify(tau0, tau1)
-          _ <- fulfillTau(tau0, expectation)
+          tau2 <- TypeCheck.instantiate(sigma0)
+          _ <- fulfillTau(tau2, expectation)
         } yield ()
     }
   
@@ -276,10 +277,13 @@ object TypeAnalysis {
   
       case Tree.Annotation(body, tau) =>
         for {
-          sigma0 <- TypeCheck.generalize(tau)
-          tau0 <- TypeCheck.skolemise(sigma0)
-          _ <- fulfillSigma(tau0, expectation)
-          result <- bindSigma(body, Expectation.Check(sigma0))(typeCheck)
+          result <- TypeCheck.skolemiseFreeVariables(tau) { tau0 =>
+            for {
+              _ <- fulfillSigma(tau0, expectation)
+              sigma0 <- TypeCheck.generalize(tau0)
+              result <- bindSigma(body, Expectation.Check(sigma0))(typeCheck)
+            } yield result
+          }
         } yield result
   
       case _ =>
@@ -333,10 +337,12 @@ object TypeAnalysis {
     
     case Tree.Annotation(body, tau) =>
       for {
-        sigma0 <- TypeCheck.generalize(tau)
-        tau0 <- TypeCheck.skolemise(sigma0)
-        _ <- fulfillTau(tau0, expectation)
-        result <- bindTau(body, Expectation.Check(tau0))(typeCheck)
+        result <- TypeCheck.skolemiseFreeVariables(tau) { tau0 =>
+          for {
+            _ <- fulfillTau(tau0, expectation)
+            result <- bindTau(body, Expectation.Check(tau0))(typeCheck)
+          } yield result
+        }
       } yield result
       
     case _ =>
