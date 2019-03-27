@@ -30,7 +30,40 @@ object TypeCheck {
    *         since the unification instantiates meta variables as a side effect.
    */
   def unify(a: Type.Tau, b: Type.Tau): TypeCheck[Unit] = {
-  
+    
+    def typeMismatch(a1: Type.Tau, b1: Type.Tau): TypeCheck[Unit] =
+      for {
+        a0 <- zonk(a)
+        b0 <- zonk(b)
+        morePrecisely =
+          if (a0 != a1 || b0 != b1)
+            s"""
+               |
+               |more precisely between type
+               |  `$a1`
+               |and type
+               |  `$b1`""".stripMargin
+          else s""
+        // skolemised variables always arise from user supplied type variables
+        rigidTypeVariables = (a1.skolemisedVariables ++ b1.skolemisedVariables).toList
+        where = rigidTypeVariables match {
+          case Nil => ""
+          case List(single) =>
+            s"""
+               |
+               |where `$single` is a rigid type variable""".stripMargin
+          case init :+ last =>
+            s"""
+               |
+               |where ${init.map("`" + _ + "`").mkString(", ")} and `$last` are rigid type variables""".stripMargin
+        }
+        _ <- TypeCheck.fail[Unit](
+          s"""type mismatch between type
+           |  `$a0`
+           |and type
+           |  `$b0`$morePrecisely$where""".stripMargin)
+      } yield ()
+      
     def unifyUnboundVariable(variable: Type.MetaVariable, tau: Type.Tau): TypeCheck[Unit] =
       tau match {
         case tau: Type.MetaVariable =>
@@ -82,7 +115,7 @@ object TypeCheck {
           } yield ()
 
         case (a, b) =>
-          TypeCheck.fail(s"type mismatch between type '$a' and type '$b'")
+          typeMismatch(a, b)
       })
     
     go(a, b)
@@ -261,7 +294,12 @@ object TypeCheck {
   
   /** Creates a new (uninstantiated) meta variable */
   def newMetaVariable: TypeCheck[Type.MetaVariable] =
-    TypeCheck.lift(Ref.of[IO, Option[Type.Tau]](None)).map(Type.MetaVariable)
+    for {
+      environment <- TypeCheck.environment
+      id <- TypeCheck.lift(environment.nextId)
+      variable <- TypeCheck.lift(Ref.of[IO, Option[Type.Tau]](None)).map(Type.MetaVariable(id, _))
+    } yield variable
+    
   
   /** Reads the value of a meta variable */
   def readMetaVariable(variable: Type.MetaVariable): TypeCheck[Option[Type.Tau]] =

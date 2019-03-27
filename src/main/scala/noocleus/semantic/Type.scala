@@ -26,6 +26,8 @@ sealed trait Type extends Product with Serializable {
   
   def metaVariables: Set[Type.MetaVariable]
   
+  def skolemisedVariables: Set[Type.Variable]
+  
   def doc: Doc
   
   final def -->(codomain: Type.Tau): Type.Tau =
@@ -52,6 +54,8 @@ object Type {
     lazy val binders: Set[Type.Variable] = Set()
     
     lazy val freeVariables: Set[Type.Variable] = Set()
+  
+    lazy val skolemisedVariables: Set[Type.Variable] = Set()
     
     lazy val metaVariables: Set[Type.MetaVariable] = Set()
     
@@ -90,14 +94,22 @@ object Type {
       }
   
       override def hashCode(): Int = System.identityHashCode(this)
+  
+      lazy val skolemisedVariables: Set[Type.Variable] = Set(this)
       
     }
     
-    case class Bound(name: String) extends Variable
+    case class Bound(name: String) extends Variable {
+      
+      lazy val skolemisedVariables: Set[Type.Variable] = Set()
+      
+    }
     
   }
   
-  case class MetaVariable(instance: Ref[IO, Option[Type.Tau]]) extends Type.Tau {
+  private lazy val greekLetters = ('\u03b1' to '\u03c9').map(_.toString).toArray
+  
+  case class MetaVariable(id: Int, instance: Ref[IO, Option[Type.Tau]]) extends Type.Tau {
   
     override def substitute(variable: Variable, tau: Type.Tau): Type =
       this
@@ -110,10 +122,12 @@ object Type {
     
     lazy val freeVariables: Set[Type.Variable] = Set()
   
-    lazy val metaVariables: Set[Type.MetaVariable] = Set(this)
+    lazy val skolemisedVariables: Set[Type.Variable] = Set()
     
-    lazy val doc: Doc = Doc.text("m" + System.identityHashCode(instance))
-  
+    lazy val metaVariables: Set[Type.MetaVariable] = Set(this)
+   
+    lazy val doc: Doc = Doc.text(greekLetters(id % greekLetters.length) + (id / greekLetters.length))
+    
     override def equals(any: Any): Boolean = any match {
       case variable: MetaVariable => variable.instance eq instance
       case _ => false
@@ -137,6 +151,9 @@ object Type {
     lazy val freeVariables: Set[Type.Variable] =
       function.freeVariables ++ argument.freeVariables
   
+    lazy val skolemisedVariables: Set[Type.Variable] =
+      function.skolemisedVariables ++ argument.skolemisedVariables
+    
     lazy val metaVariables: Set[Type.MetaVariable] =
       function.metaVariables ++ argument.metaVariables
     
@@ -166,6 +183,9 @@ object Type {
     
     lazy val freeVariables: Set[Type.Variable] =
       domain.freeVariables ++ codomain.freeVariables
+  
+    lazy val skolemisedVariables: Set[Type.Variable] =
+      domain.skolemisedVariables ++ codomain.skolemisedVariables
     
     lazy val metaVariables: Set[Type.MetaVariable] =
       domain.metaVariables ++ codomain.metaVariables
@@ -194,6 +214,9 @@ object Type {
     lazy val freeVariables: Set[Type.Variable] =
       tau.freeVariables -- variables
   
+    lazy val skolemisedVariables: Set[Type.Variable] =
+      tau.skolemisedVariables
+    
     lazy val metaVariables: Set[Type.MetaVariable] =
       tau.metaVariables
     
